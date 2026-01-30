@@ -38,19 +38,25 @@ jobs:
 
               console.log('Navigating to Social Blade...');
               await page.goto('https://socialblade.com/instagram/user/uefrance', {
-                waitUntil: 'domcontentloaded',
+                waitUntil: 'networkidle',
                 timeout: 60000
               });
 
-              // Attendre que la page soit chargée
-              await page.waitForTimeout(5000);
+              // Attendre que les données soient chargées
+              await page.waitForSelector('text=Followers', { timeout: 15000 });
 
               // Extraire le nombre d'abonnés depuis Social Blade
               const followers = await page.evaluate(() => {
-                // Sélecteur pour le nombre d'abonnés sur Social Blade
-                const element = document.querySelector('.youTubeUserTopInfo > div:nth-child(2) > span');
+                // Sélecteur mis à jour pour 2026
+                const element = document.querySelector('div[class*="stats-top"] div[class*="stat"]:nth-child(2) span[class*="number"]');
                 if (element) {
                   return element.innerText.trim().replace(/[^\d]/g, '');
+                }
+                // Alternative : recherche dans les métadonnées
+                const meta = document.querySelector('meta[property="og:description"]');
+                if (meta) {
+                  const match = meta.content.match(/(\d+[\d,]*)\s*followers/i);
+                  return match ? match[1].replace(/[^\d]/g, '') : null;
                 }
                 return null;
               });
@@ -69,8 +75,8 @@ jobs:
               } else {
                 console.error('Could not find follower count on Social Blade');
                 // Afficher une partie du HTML pour déboguer
-                const contentSample = await page.content();
-                console.log('Page content sample:', contentSample.substring(0, 3000));
+                const statsSection = await page.$eval('div[class*="stats-top"]', el => el ? el.innerHTML : 'No stats section found');
+                console.log('Stats section HTML:', statsSection.substring(0, 1000));
                 process.exit(1);
               }
 
