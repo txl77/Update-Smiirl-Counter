@@ -38,13 +38,10 @@ jobs:
               console.log('Navigating to Instagram...');
               await page.goto('https://www.instagram.com/uefrance/', { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-              // Attendre que la page soit chargée (méthode alternative)
-              await page.waitForFunction(() => {
-                const meta = document.querySelector('meta[property="og:description"]');
-                return meta && meta.content.includes('Followers');
-              }, { timeout: 60000 });
+              // Attendre que le corps de la page soit chargé
+              await page.waitForTimeout(5000);
 
-              console.log('Page loaded, extracting data...');
+              // Extraire directement le JSON depuis le script de la page
               const content = await page.content();
               const jsonMatch = content.match(/window\._sharedData\s*=\s*({.*?});/);
 
