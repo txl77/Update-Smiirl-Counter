@@ -29,15 +29,22 @@ jobs:
           const { chromium } = require('playwright');
           (async () => {
             try {
-              const browser = await chromium.launch();
+              const browser = await chromium.launch({ headless: false });
               const context = await browser.newContext({
                 userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
               });
               const page = await context.newPage();
 
+              console.log('Navigating to Instagram...');
               await page.goto('https://www.instagram.com/uefrance/', { waitUntil: 'domcontentloaded', timeout: 60000 });
-              await page.waitForSelector('text=uefrance', { timeout: 60000 });
 
+              // Attendre que la page soit chargée (méthode alternative)
+              await page.waitForFunction(() => {
+                const meta = document.querySelector('meta[property="og:description"]');
+                return meta && meta.content.includes('Followers');
+              }, { timeout: 60000 });
+
+              console.log('Page loaded, extracting data...');
               const content = await page.content();
               const jsonMatch = content.match(/window\._sharedData\s*=\s*({.*?});/);
 
