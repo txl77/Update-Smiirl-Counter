@@ -1,41 +1,27 @@
-name: Update Followers via Textise + Nitter
+name: Update Follower Count
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    # Runs at 00:00 UTC every day
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allows you to run it manually for testing
 
 jobs:
-  update:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Fetch followers and update npoint
-        shell: bash
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
         run: |
-          NPOINT_URL="https://api.npoint.io/5c1ef38596efbfb2bfe9"
-          TEXTISE_URL="http://textise.org/showtext.aspx?strURL=https://nitter.net/UEFrance"
+          pip install requests beautifulsoup4
 
-          echo "Fetching followers via Textise..."
-
-          HTML=$(curl -s "$TEXTISE_URL")
-
-          FOLLOWERS=$(echo "$HTML" \
-            | grep -i "Followers" -A1 \
-            | grep -o '[0-9][0-9 ]*' \
-            | head -1 \
-            | tr -d ' ')
-
-          if [ -z "$FOLLOWERS" ]; then
-            echo "Failed to extract followers"
-            echo "Debug output:"
-            echo "$HTML" | head -c 800
-            exit 1
-          fi
-
-          echo "Followers: $FOLLOWERS"
-
-          curl -s -X POST "$NPOINT_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"number\": $FOLLOWERS}"
-
-          echo "npoint updated successfully"
+      - name: Run Scraper
+        run: python scrape_to_npoint.py
