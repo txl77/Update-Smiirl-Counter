@@ -3,7 +3,7 @@ name: Update Smiirl Counter with Nitter Followers
 on:
   schedule:
     - cron: '0 10 * * *'  # Tous les jours à 10h (heure de Paris)
-  workflow_dispatch:    # Permet de lancer manuellement
+  workflow_dispatch:
 
 jobs:
   update:
@@ -41,24 +41,57 @@ jobs:
                 timeout: 60000
               });
 
-              // Attendre que la section des followers soit chargée
-              await page.waitForSelector('.profile-stat-num', { timeout: 10000 });
+              // Attendre plus longtemps pour que la page charge complètement
+              await page.waitForTimeout(10000);
 
-              // Extraire le nombre d'abonnés
-              const followersText = await page.$eval('.profile-stat-num', el => el.innerText);
-              const followers = followersText.replace(/,/g, '').trim();
+              // Méthode 1: Essayer avec le sélecteur original
+              let followers = null;
+              try {
+                await page.waitForSelector('.profile-stat-num', { timeout: 10000 });
+                followers = await page.$eval('.profile-stat-num', el => el.innerText.replace(/,/g, '').trim());
+              } catch (e) {
+                console.log('Sélecteur .profile-stat-num non trouvé, essai d\'une autre méthode...');
+              }
 
-              console.log('Followers found:', followers);
+              // Méthode 2: Chercher dans tout le HTML
+              if (!followers) {
+                const content = await page.content();
+                const match = content.match(/<span class="profile-stat-num">([\d,]+)<\/span>/);
+                if (match) {
+                  followers = match[1].replace(/,/g, '').trim();
+                }
+              }
 
-              // Mettre à jour npoint.io
-              const response = await fetch('https://api.npoint.io/5c1ef38596efbfb2bfe9', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({number: parseInt(followers)})
-              });
+              // Méthode 3: Chercher par texte
+              if (!followers) {
+                const elements = await page.$$eval('span', spans =>
+                  spans.map(span => span.innerText)
+                        .find(text => /^\d{1,3}(,\d{3})*$/.test(text))
+                );
+                if (elements) {
+                  followers = elements.replace(/,/g, '').trim();
+                }
+              }
 
-              if (!response.ok) throw new Error('Failed to update npoint');
-              console.log('npoint updated successfully!');
+              if (followers) {
+                console.log('Followers found:', followers);
+
+                const response = await fetch('https://api.npoint.io/5c1ef38596efbfb2bfe9', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({number: parseInt(followers)})
+                });
+
+                if (!response.ok) throw new Error('Failed to update npoint');
+                console.log('npoint updated successfully!');
+              } else {
+                console.error('Could not find follower count on Nitter');
+                // Afficher une partie du HTML pour débogage
+                const bodyHTML = await page.content();
+                console.log('Page body sample (first 5000 chars):');
+                console.log(bodyHTML.substring(0, 5000));
+                process.exit(1);
+              }
 
               await browser.close();
             } catch (error) {
