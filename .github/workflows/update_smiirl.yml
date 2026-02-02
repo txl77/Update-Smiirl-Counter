@@ -20,15 +20,15 @@ jobs:
           HTML=$(curl -s -H "User-Agent: Mozilla/5.0" "$NITTER_URL")
 
           FOLLOWERS=$(echo "$HTML" \
-            | grep -oP '<span class="profile-stat-num">[0-9,]+' \
+            | grep -oP '<li class="profile-stat">[\s\S]*?</li>' \
             | head -1 \
-            | grep -oP '[0-9,]+' \
-            | tr -d ',')
+            | grep -oP '[0-9][0-9  ,]*' \
+            | tr -cd '0-9')
 
           if [ -z "$FOLLOWERS" ]; then
             echo "Failed to fetch followers"
             echo "Debug output:"
-            echo "$HTML" | head -c 500
+            echo "$HTML" | head -c 800
             exit 1
           fi
 
