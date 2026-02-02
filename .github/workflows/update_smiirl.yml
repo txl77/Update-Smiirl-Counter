@@ -48,7 +48,7 @@ jobs:
               const content = await page.content();
               const followersMatch = content.match(/"followers_count":(\d+)/);
 
-              if (followersCountMatch) {
+              if (followersMatch) {
                 const followers = followersMatch[1];
                 console.log('Followers found:', followers);
 
