@@ -1,34 +1,48 @@
-NPOINT_URL="https://api.npoint.io/5c1ef38596efbfb2bfe9"
+name: Update Instagram Followers
 
-echo "Fetching followers for @uefrance"
+on:
+  schedule:
+    - cron: '0 * * * *' # toutes les heures
+  workflow_dispatch:
 
-# 1️⃣ Tentative via endpoint JSON
-FOLLOWERS=$(curl -s \
-  -H "User-Agent: Mozilla/5.0" \
-  "https://www.instagram.com/uefrance/?__a=1&__d=dis" \
-  | grep -oP '"follower_count":\K[0-9]+')
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Instagram followers and update npoint
+        shell: bash
+        run: |
+          NPOINT_URL="https://api.npoint.io/5c1ef38596efbfb2bfe9"
 
-# 2️⃣ Fallback HTML si bloqué
-if [ -z "$FOLLOWERS" ]; then
-  echo "⚠️ __a=1 failed, falling back to HTML scraping"
+          echo "Fetching followers for @uefrance"
 
-  FOLLOWERS=$(curl -s \
-    -H "User-Agent: Mozilla/5.0" \
-    "https://www.instagram.com/uefrance/" \
-    | grep -oP '"edge_followed_by":\{"count":\K[0-9]+')
-fi
+          # 1️⃣ Tentative via endpoint JSON
+          FOLLOWERS=$(curl -s \
+            -H "User-Agent: Mozilla/5.0" \
+            "https://www.instagram.com/uefrance/?__a=1&__d=dis" \
+            | grep -oP '"follower_count":\K[0-9]+')
 
-# 3️⃣ Vérification finale
-if [ -z "$FOLLOWERS" ]; then
-  echo "❌ Failed to fetch followers via all methods"
-  exit 1
-fi
+          # 2️⃣ Fallback HTML si bloqué
+          if [ -z "$FOLLOWERS" ]; then
+            echo "__a=1 failed, falling back to HTML scraping"
 
-echo "Followers: $FOLLOWERS"
+            FOLLOWERS=$(curl -s \
+              -H "User-Agent: Mozilla/5.0" \
+              "https://www.instagram.com/uefrance/" \
+              | grep -oP '"edge_followed_by":\{"count":\K[0-9]+')
+          fi
 
-# 4️⃣ Update npoint
-curl -s -X POST "$NPOINT_URL" \
-  -H "Content-Type: application/json" \
-  -d "{\"number\": $FOLLOWERS}"
+          # 3️⃣ Vérification finale
+          if [ -z "$FOLLOWERS" ]; then
+            echo "Failed to fetch followers"
+            exit 1
+          fi
 
-echo "✅ npoint updated successfully"
+          echo "Followers: $FOLLOWERS"
+
+          # 4️⃣ Update npoint
+          curl -s -X POST "$NPOINT_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"number\": $FOLLOWERS}"
+
+          echo "npoint updated successfully"
