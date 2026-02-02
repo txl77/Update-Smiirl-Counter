@@ -1,102 +1,171 @@
-name: Update Smiirl Counter with Nitter Followers
+name: Update Twitter Followers via Nitter
 
 on:
   schedule:
-    - cron: '0 10 * * *'  # Tous les jours à 10h (heure de Paris)
-  workflow_dispatch:
+    # Exécute tous les jours à 9h00 UTC
+    - cron: '0 9 * * *'
+  workflow_dispatch: # Permet l'exécution manuelle
 
 jobs:
-  update:
+  update-followers:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          node-version: '20'
+          python-version: '3.11'
 
-      - name: Install Playwright
-        run: npm install playwright
-
-      - name: Install browser
-        run: npx playwright install chromium
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4
 
       - name: Get followers from Nitter and update npoint
         run: |
-          node << 'EOF'
-          const { chromium } = require('playwright');
-          (async () => {
-            try {
-              const browser = await chromium.launch({ headless: true });
-              const context = await browser.newContext({
-                userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              });
-              const page = await context.newPage();
+          python << 'EOF'
+          import requests
+          from bs4 import BeautifulSoup
+          from datetime import datetime
+          import json
+          import re
 
-              console.log('Navigating to Nitter...');
-              await page.goto('https://nitter.net/UEFrance', {
-                waitUntil: 'domcontentloaded',
-                timeout: 60000
-              });
-
-              // Attendre plus longtemps pour que la page charge complètement
-              await page.waitForTimeout(10000);
-
-              // Méthode 1: Essayer avec le sélecteur original
-              let followers = null;
-              try {
-                await page.waitForSelector('.profile-stat-num', { timeout: 10000 });
-                followers = await page.$eval('.profile-stat-num', el => el.innerText.replace(/,/g, '').trim());
-              } catch (e) {
-                console.log('Sélecteur .profile-stat-num non trouvé, essai d\'une autre méthode...');
+          # Configuration
+          twitter_username = "UEFrance"
+          npoint_url = "https://api.npoint.io/5c1ef38596efbfb2bfe9"
+          
+          # Liste des instances Nitter à essayer
+          nitter_instances = [
+              "https://nitter.net",
+              "https://nitter.poast.org",
+              "https://nitter.privacydev.net",
+              "https://nitter.eu",
+              "https://nitter.it",
+              "https://nitter.cz",
+              "https://nitter.fdn.fr",
+              "https://nitter.1d4.us",
+          ]
+          
+          followers_count = None
+          instance_used = None
+          
+          print(f"🔍 Recherche des followers pour @{twitter_username}...")
+          print("")
+          
+          # Essayer chaque instance Nitter
+          for instance in nitter_instances:
+              try:
+                  url = f"{instance}/{twitter_username}"
+                  print(f"🌐 Tentative: {url}")
+                  
+                  headers = {
+                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                  }
+                  
+                  response = requests.get(url, headers=headers, timeout=10)
+                  
+                  if response.status_code == 200:
+                      soup = BeautifulSoup(response.content, 'html.parser')
+                      
+                      # Chercher l'élément <li class="followers">
+                      followers_li = soup.find('li', class_='followers')
+                      
+                      if followers_li:
+                          # Chercher le <span class="profile-stat-num"> à l'intérieur
+                          stat_num = followers_li.find('span', class_='profile-stat-num')
+                          
+                          if stat_num:
+                              # Récupérer le texte et nettoyer (enlever les virgules)
+                              followers_text = stat_num.text.strip()
+                              followers_count = int(followers_text.replace(',', '').replace(' ', ''))
+                              instance_used = instance
+                              
+                              print(f"✅ Trouvé: {followers_count:,} followers")
+                              print(f"📍 Source: {instance}")
+                              break
+                      else:
+                          print(f"   ⚠️  Structure HTML non trouvée")
+                  else:
+                      print(f"   ⚠️  Erreur HTTP {response.status_code}")
+                      
+              except requests.exceptions.Timeout:
+                  print(f"   ⏱️  Timeout")
+              except requests.exceptions.RequestException as e:
+                  print(f"   ❌ Erreur: {str(e)[:50]}")
+              except Exception as e:
+                  print(f"   ❌ Erreur inattendue: {str(e)[:50]}")
+          
+          print("")
+          
+          # Vérifier si on a trouvé le nombre de followers
+          if followers_count is None:
+              print("❌ Impossible de récupérer le nombre de followers depuis toutes les instances Nitter")
+              print("")
+              print("💡 Suggestions:")
+              print("   - Vérifiez que les instances Nitter sont accessibles")
+              print("   - Réessayez plus tard")
+              print("   - Utilisez l'API Twitter officielle pour plus de fiabilité")
+              exit(1)
+          
+          # Préparer les données pour npoint.io
+          payload = {
+              "username": twitter_username,
+              "followers_count": followers_count,
+              "last_updated": datetime.utcnow().isoformat() + "Z",
+              "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+              "source": "nitter",
+              "instance": instance_used
+          }
+          
+          print("📤 Envoi des données à npoint.io...")
+          
+          # Envoyer à npoint.io
+          try:
+              headers = {
+                  "Content-Type": "application/json"
               }
-
-              // Méthode 2: Chercher dans tout le HTML
-              if (!followers) {
-                const content = await page.content();
-                const match = content.match(/<span class="profile-stat-num">([\d,]+)<\/span>/);
-                if (match) {
-                  followers = match[1].replace(/,/g, '').trim();
-                }
-              }
-
-              // Méthode 3: Chercher par texte
-              if (!followers) {
-                const elements = await page.$$eval('span', spans =>
-                  spans.map(span => span.innerText)
-                        .find(text => /^\d{1,3}(,\d{3})*$/.test(text))
-                );
-                if (elements) {
-                  followers = elements.replace(/,/g, '').trim();
-                }
-              }
-
-              if (followers) {
-                console.log('Followers found:', followers);
-
-                const response = await fetch('https://api.npoint.io/5c1ef38596efbfb2bfe9', {
-                  method: 'POST',
-                  headers: {'Content-Type': 'application/json'},
-                  body: JSON.stringify({number: parseInt(followers)})
-                });
-
-                if (!response.ok) throw new Error('Failed to update npoint');
-                console.log('npoint updated successfully!');
-              } else {
-                console.error('Could not find follower count on Nitter');
-                // Afficher une partie du HTML pour débogage
-                const bodyHTML = await page.content();
-                console.log('Page body sample (first 5000 chars):');
-                console.log(bodyHTML.substring(0, 5000));
-                process.exit(1);
-              }
-
-              await browser.close();
-            } catch (error) {
-              console.error('Error:', error);
-              process.exit(1);
-            }
-          })();
+              
+              response = requests.post(npoint_url, headers=headers, json=payload, timeout=10)
+              
+              if response.status_code in [200, 201]:
+                  print("✅ Données envoyées avec succès à npoint.io")
+                  print("")
+                  print("📊 Données envoyées:")
+                  print(json.dumps(payload, indent=2, ensure_ascii=False))
+              else:
+                  print(f"⚠️  Erreur lors de l'envoi: HTTP {response.status_code}")
+                  print(f"Response: {response.text}")
+                  
+                  # Si POST échoue, essayer PUT (mise à jour)
+                  print("")
+                  print("🔄 Tentative avec PUT...")
+                  response = requests.put(npoint_url, headers=headers, json=payload, timeout=10)
+                  
+                  if response.status_code in [200, 201]:
+                      print("✅ Données mises à jour avec succès")
+                      print("")
+                      print("📊 Données envoyées:")
+                      print(json.dumps(payload, indent=2, ensure_ascii=False))
+                  else:
+                      print(f"❌ Échec de la mise à jour: HTTP {response.status_code}")
+                      exit(1)
+                      
+          except requests.exceptions.RequestException as e:
+              print(f"❌ Erreur lors de la connexion à npoint.io: {e}")
+              exit(1)
+          
+          print("")
+          print("✨ Opération terminée avec succès!")
+          
           EOF
+
+      - name: Create summary
+        if: always()
+        run: |
+          echo "### 📊 Mise à jour des followers Twitter" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Compte surveillé:** @UEFrance" >> $GITHUB_STEP_SUMMARY
+          echo "**Date d'exécution:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Destination:** npoint.io" >> $GITHUB_STEP_SUMMARY
