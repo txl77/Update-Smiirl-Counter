@@ -14,35 +14,36 @@ jobs:
         run: |
           NPOINT_URL="https://api.npoint.io/5c1ef38596efbfb2bfe9"
 
-          echo "Fetching followers for @uefrance"
+echo "Fetching followers for @uefrance"
 
-          # 1️⃣ Tentative via endpoint JSON
-          FOLLOWERS=$(curl -s \
-            -H "User-Agent: Mozilla/5.0" \
-            "https://www.instagram.com/uefrance/?__a=1&__d=dis" \
-            | grep -oP '"follower_count":\K[0-9]+')
+FETCH_HTML() {
+  curl -s \
+    -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
+    -H "Accept-Language: fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7" \
+    -H "Accept: text/html" \
+    -H "Referer: https://www.instagram.com/" \
+    --compressed \
+    "https://www.instagram.com/uefrance/"
+}
 
-          # 2️⃣ Fallback HTML si bloqué
-          if [ -z "$FOLLOWERS" ]; then
-            echo "__a=1 failed, falling back to HTML scraping"
+# 1️⃣ HTML scraping direct (le plus fiable sur GitHub)
+HTML=$(FETCH_HTML)
 
-            FOLLOWERS=$(curl -s \
-              -H "User-Agent: Mozilla/5.0" \
-              "https://www.instagram.com/uefrance/" \
-              | grep -oP '"edge_followed_by":\{"count":\K[0-9]+')
-          fi
+FOLLOWERS=$(echo "$HTML" | grep -oP '"edge_followed_by":\{"count":\K[0-9]+')
 
-          # 3️⃣ Vérification finale
-          if [ -z "$FOLLOWERS" ]; then
-            echo "Failed to fetch followers"
-            exit 1
-          fi
+# 2️⃣ Vérification
+if [ -z "$FOLLOWERS" ]; then
+  echo "❌ Failed to fetch followers"
+  echo "---- DEBUG (first 500 chars) ----"
+  echo "$HTML" | head -c 500
+  exit 1
+fi
 
-          echo "Followers: $FOLLOWERS"
+echo "Followers: $FOLLOWERS"
 
-          # 4️⃣ Update npoint
-          curl -s -X POST "$NPOINT_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"number\": $FOLLOWERS}"
+# 3️⃣ Update npoint
+curl -s -X POST "$NPOINT_URL" \
+  -H "Content-Type: application/json" \
+  -d "{\"number\": $FOLLOWERS}"
 
-          echo "npoint updated successfully"
+echo "✅ npoint updated successfully"
