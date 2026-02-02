@@ -2,53 +2,55 @@ import os
 import requests
 from bs4 import BeautifulSoup
 import sys
-from datetime import datetime
 
-# Get API Key from GitHub Secrets
+# Configuration
 API_KEY = os.getenv('SCRAPINGANT_KEY')
+NPOINT_ID = "5c1ef38596efbfb2bfe9"
 TARGET_URL = "https://nitter.net/UEFrance"
-# The proxy URL (ScrapingAnt example)
-PROXY_URL = f"https://api.scrapingant.com/v2/general?url={TARGET_URL}&x-api-key={API_KEY}"
+
+def parse_nitter_number(text):
+    """Converts strings like '10.5K' or '1,200' into pure numbers."""
+    text = text.upper().replace(',', '').replace(' ', '').strip()
+    if 'K' in text:
+        return str(int(float(text.replace('K', '')) * 1000))
+    if 'M' in text:
+        return str(int(float(text.replace('M', '')) * 1000000))
+    return text
 
 def get_followers():
+    proxy_url = f"https://api.scrapingant.com/v2/general?url={TARGET_URL}&x-api-key={API_KEY}"
+    
     try:
-        print(f"Requesting through proxy...")
-        response = requests.get(PROXY_URL, timeout=20)
-        
+        response = requests.get(proxy_url, timeout=30)
         if response.status_code != 200:
-            print(f"Proxy error: {response.status_code}")
             return None
             
         soup = BeautifulSoup(response.text, 'html.parser')
+        # Target the specific follower link
+        follower_link = soup.find('a', href=lambda x: x and '/followers' in x)
         
-        # Nitter's followers are specifically in the 'nav-item' or 'profile-stat-num'
-        # We search for the link that contains '/followers'
-        follower_link = soup.find('a', href='/UEFrance/followers')
         if follower_link:
-            count_span = follower_link.find('span', class_='profile-stat-num')
-            if count_span:
-                return count_span.text.replace(',', '').replace(' ', '').strip()
-        
-        # Backup: try the 3rd stat-num if the link-specific search fails
-        stats = soup.find_all('span', class_='profile-stat-num')
-        if len(stats) >= 3:
-            return stats[2].text.replace(',', '').replace(' ', '').strip()
-
+            raw_count = follower_link.find('span', class_='profile-stat-num').text
+            return parse_nitter_number(raw_count)
+            
     except Exception as e:
         print(f"Error: {e}")
     return None
 
-follower_count = get_followers()
+# Execution
+followers = get_followers()
 
-if follower_count:
-    # Update Npoint
-    NPOINT_URL = "https://api.npoint.io/5c1ef38596efbfb2bfe9"
-    payload = {
-        "followers": follower_count, 
-        "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    res = requests.post(NPOINT_URL, json=payload)
-    print(f"Npoint update: {res.status_code}")
+if followers:
+    # We only send the 'number' key as requested
+    payload = {"number": followers}
+    
+    update_url = f"https://api.npoint.io/{NPOINT_ID}"
+    res = requests.post(update_url, json=payload)
+    
+    if res.status_code == 200:
+        print(f"Success! Npoint updated with: {payload}")
+    else:
+        print(f"Failed to update Npoint. Status: {res.status_code}")
 else:
-    print("Failed to retrieve data even with proxy.")
+    print("Could not retrieve followers.")
     sys.exit(1)
