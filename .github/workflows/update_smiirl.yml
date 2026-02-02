@@ -1,4 +1,4 @@
-name: Update Followers from Nitter
+name: Update Followers via Textise + Nitter
 
 on:
   schedule:
@@ -9,48 +9,26 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch followers from Nitter and update npoint
+      - name: Fetch followers and update npoint
         shell: bash
         run: |
           NPOINT_URL="https://api.npoint.io/5c1ef38596efbfb2bfe9"
+          TEXTISE_URL="http://textise.org/showtext.aspx?strURL=https://nitter.net/UEFrance"
 
-          NITTER_INSTANCES=(
-            "https://nitter.cz"
-            "https://nitter.it"
-            "https://nitter.privacydev.net"
-            "https://nitter.poast.org"
-          )
+          echo "Fetching followers via Textise..."
 
-          HTML=""
-          USED_INSTANCE=""
-
-          for INSTANCE in "${NITTER_INSTANCES[@]}"; do
-            echo "Trying $INSTANCE"
-            HTML=$(curl -L -s \
-              -H "User-Agent: Mozilla/5.0" \
-              "$INSTANCE/UEFrance")
-
-            if echo "$HTML" | grep -q "profile-stat"; then
-              USED_INSTANCE="$INSTANCE"
-              break
-            fi
-          done
-
-          if [ -z "$USED_INSTANCE" ]; then
-            echo "All Nitter instances failed"
-            exit 1
-          fi
-
-          echo "Using $USED_INSTANCE"
+          HTML=$(curl -s "$TEXTISE_URL")
 
           FOLLOWERS=$(echo "$HTML" \
-            | sed 's/&nbsp;/ /g' \
-            | tr -cd '0-9 \n' \
-            | head -n 1 \
+            | grep -i "Followers" -A1 \
+            | grep -o '[0-9][0-9 ]*' \
+            | head -1 \
             | tr -d ' ')
 
           if [ -z "$FOLLOWERS" ]; then
             echo "Failed to extract followers"
+            echo "Debug output:"
+            echo "$HTML" | head -c 800
             exit 1
           fi
 
