@@ -12,23 +12,45 @@ jobs:
       - name: Fetch followers from Nitter and update npoint
         shell: bash
         run: |
-          NITTER_URL="https://nitter.net/UEFrance"
           NPOINT_URL="https://api.npoint.io/5c1ef38596efbfb2bfe9"
 
-          echo "Fetching followers from Nitter..."
+          NITTER_INSTANCES=(
+            "https://nitter.cz"
+            "https://nitter.it"
+            "https://nitter.privacydev.net"
+            "https://nitter.poast.org"
+          )
 
-          HTML=$(curl -s -H "User-Agent: Mozilla/5.0" "$NITTER_URL")
+          HTML=""
+          USED_INSTANCE=""
+
+          for INSTANCE in "${NITTER_INSTANCES[@]}"; do
+            echo "Trying $INSTANCE"
+            HTML=$(curl -L -s \
+              -H "User-Agent: Mozilla/5.0" \
+              "$INSTANCE/UEFrance")
+
+            if echo "$HTML" | grep -q "profile-stat"; then
+              USED_INSTANCE="$INSTANCE"
+              break
+            fi
+          done
+
+          if [ -z "$USED_INSTANCE" ]; then
+            echo "All Nitter instances failed"
+            exit 1
+          fi
+
+          echo "Using $USED_INSTANCE"
 
           FOLLOWERS=$(echo "$HTML" \
-            | grep -oP '<li class="profile-stat">[\s\S]*?</li>' \
-            | head -1 \
-            | grep -oP '[0-9][0-9  ,]*' \
-            | tr -cd '0-9')
+            | sed 's/&nbsp;/ /g' \
+            | tr -cd '0-9 \n' \
+            | head -n 1 \
+            | tr -d ' ')
 
           if [ -z "$FOLLOWERS" ]; then
-            echo "Failed to fetch followers"
-            echo "Debug output:"
-            echo "$HTML" | head -c 800
+            echo "Failed to extract followers"
             exit 1
           fi
 
