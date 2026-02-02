@@ -3,37 +3,74 @@ name: Update Smiirl Counter with Twitter Followers
 on:
   schedule:
     - cron: '0 10 * * *'  # Tous les jours à 10h (heure de Paris)
-  workflow_dispatch:  # Permet de lancer manuellement
+  workflow_dispatch:
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        run: npm install playwright
+
+      - name: Install browser
+        run: npx playwright install chromium
+
       - name: Get Twitter followers and update npoint
         run: |
-          # Installer les outils nécessaires
-          sudo apt-get update
-          sudo apt-get install -y curl jq
+          node << 'EOF'
+          const { chromium } = require('playwright');
+          (async () => {
+            try {
+              const browser = await chromium.launch({ headless: true });
+              const context = await browser.newContext({
+                userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              });
+              const page = await context.newPage();
 
-          # Récupérer le nombre d'abonnés depuis l'API Twitter (via un service tiers)
-          # Utilisation de l'API publique de Twitter (nécessite un Bearer Token)
-          # Pour obtenir un token: https://developer.twitter.com/en/portal/projects-and-apps
+              console.log('Navigating to Twitter/X...');
+              await page.goto('https://x.com/UEFrance', {
+                waitUntil: 'domcontentloaded',
+                timeout: 60000
+              });
 
-          # Méthode alternative sans token (via un service tiers public)
-          FOLLOWERS=$(curl -s "https://cdn.syndication.twimg.com/widget/followbutton/info.json?screen_names=UEFrance" | \
-                     jq -r '.[] | select(.screen_name=="UEFrance") | .followers_count')
+              // Attendre que la page soit chargée
+              await page.waitForTimeout(5000);
 
-          if [ -z "$FOLLOWERS" ] || [ "$FOLLOWERS" = "null" ]; then
-            echo "Erreur: Impossible de récupérer le nombre d'abonnés depuis Twitter"
-            exit 1
-          fi
+              // Extraire le code source et chercher "followers_count"
+              const content = await page.content();
+              const followersMatch = content.match(/"followers_count":(\d+)/);
 
-          echo "Nombre d'abonnés Twitter: $FOLLOWERS"
+              if (followersCountMatch) {
+                const followers = followersMatch[1];
+                console.log('Followers found:', followers);
 
-          # Mettre à jour npoint.io
-          RESPONSE=$(curl -s -X POST "https://api.npoint.io/5c1ef38596efbfb2bfe9" \
-                    -H "Content-Type: application/json" \
-                    -d "{\"number\": $FOLLOWERS}")
+                const response = await fetch('https://api.npoint.io/5c1ef38596efbfb2bfe9', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({number: parseInt(followers)})
+                });
 
-          echo "npoint.io mis à jour avec succès!"
-          echo "Réponse de l'API: $RESPONSE"
+                if (!response.ok) throw new Error('Failed to update npoint');
+                console.log('npoint updated successfully!');
+              } else {
+                console.error('Could not find "followers_count" in page source');
+                // Afficher une partie du code source pour débogage
+                console.log('Page source sample:', content.substring(0, 3000));
+                process.exit(1);
+              }
+
+              await browser.close();
+            } catch (error) {
+              console.error('Error:', error);
+              process.exit(1);
+            }
+          })();
+          EOF
