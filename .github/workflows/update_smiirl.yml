@@ -24,4 +24,6 @@ jobs:
           pip install requests beautifulsoup4
 
       - name: Run Scraper
+        env:
+          SCRAPINGANT_KEY: ${{ secrets.SCRAPINGANT_KEY }}
         run: python scrape_to_npoint.py
