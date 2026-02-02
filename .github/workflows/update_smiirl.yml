@@ -1,46 +1,39 @@
-name: Update Instagram Followers
+name: Update Smiirl Counter with Twitter Followers
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 10 * * *'  # Tous les jours à 10h (heure de Paris)
+  workflow_dispatch:  # Permet de lancer manuellement
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch Instagram followers and update npoint
-        shell: bash
+      - name: Get Twitter followers and update npoint
         run: |
-          NPOINT_URL="https://api.npoint.io/5c1ef38596efbfb2bfe9"
+          # Installer les outils nécessaires
+          sudo apt-get update
+          sudo apt-get install -y curl jq
 
-          echo "Fetching followers for @uefrance"
+          # Récupérer le nombre d'abonnés depuis l'API Twitter (via un service tiers)
+          # Utilisation de l'API publique de Twitter (nécessite un Bearer Token)
+          # Pour obtenir un token: https://developer.twitter.com/en/portal/projects-and-apps
 
-          FETCH_HTML() {
-            curl -s \
-              -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
-              -H "Accept-Language: fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7" \
-              -H "Accept: text/html" \
-              -H "Referer: https://www.instagram.com/" \
-              --compressed \
-              "https://www.instagram.com/uefrance/"
-          }
+          # Méthode alternative sans token (via un service tiers public)
+          FOLLOWERS=$(curl -s "https://cdn.syndication.twimg.com/widget/followbutton/info.json?screen_names=UEFrance" | \
+                     jq -r '.[] | select(.screen_name=="UEFrance") | .followers_count')
 
-          HTML=$(FETCH_HTML)
-
-          FOLLOWERS=$(echo "$HTML" | grep -oP '"edge_followed_by":\{"count":\K[0-9]+')
-
-          if [ -z "$FOLLOWERS" ]; then
-            echo "Failed to fetch followers"
-            echo "Debug output:"
-            echo "$HTML" | head -c 500
+          if [ -z "$FOLLOWERS" ] || [ "$FOLLOWERS" = "null" ]; then
+            echo "Erreur: Impossible de récupérer le nombre d'abonnés depuis Twitter"
             exit 1
           fi
 
-          echo "Followers: $FOLLOWERS"
+          echo "Nombre d'abonnés Twitter: $FOLLOWERS"
 
-          curl -s -X POST "$NPOINT_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"number\": $FOLLOWERS}"
+          # Mettre à jour npoint.io
+          RESPONSE=$(curl -s -X POST "https://api.npoint.io/5c1ef38596efbfb2bfe9" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"number\": $FOLLOWERS}")
 
-          echo "npoint updated successfully"
+          echo "npoint.io mis à jour avec succès!"
+          echo "Réponse de l'API: $RESPONSE"
