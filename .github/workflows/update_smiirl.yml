@@ -1,1 +1,36 @@
 
+name: Update Instagram Followers (no API)
+
+on:
+  schedule:
+    - cron: '0 * * * *' # toutes les heures
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Instagram followers and update npoint
+        run: |
+          USERNAME="uefrance"
+          NPOINT_URL="https://api.npoint.io/5c1ef38596efbfb2bfe9"
+
+          echo "Fetching followers for @$USERNAME"
+
+          FOLLOWERS=$(curl -s \
+            -H "User-Agent: Mozilla/5.0" \
+            "https://www.instagram.com/${USERNAME}/?__a=1&__d=dis" \
+            | grep -oP '"follower_count":\K[0-9]+')
+
+          if [ -z "$FOLLOWERS" ]; then
+            echo "❌ Failed to fetch followers"
+            exit 1
+          fi
+
+          echo "Followers: $FOLLOWERS"
+
+          curl -s -X POST "$NPOINT_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"number\": $FOLLOWERS}"
+
+          echo "✅ npoint updated successfully"
